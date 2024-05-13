@@ -894,8 +894,8 @@ private:
     }
 
     void printListOfAvailablePlaylists() {
-        if(!manager->printListOfPlaylists())
-            printNotification("error", "в даний момент жодного плейлиста немає!");
+        if (!manager->printListOfPlaylists())
+            cout << "Поки що не було створено жодного плейлиста!\n\n";
     }
 
     void addVideoToPlaylist() {
