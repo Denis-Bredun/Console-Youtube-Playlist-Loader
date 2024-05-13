@@ -1,0 +1,67 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ClassDiagram MajorVersion="1" MinorVersion="1" MembersFormat="FullSignature">
+  <Class Name="Validator">
+    <Position X="20.25" Y="0.75" Width="4" />
+    <TypeIdentifier>
+      <HashCode>AAAgAAAAAAAAAAAAAAEAIAAAAAAAAFAAAAAAAAAAAQA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="YoutubeVideo">
+    <Position X="21" Y="3.25" Width="2.75" />
+    <TypeIdentifier>
+      <HashCode>QgAAAAAAAIABQAEAQCAAAAAAAAAUAIBAUAgEAAACAgA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="YoutubePlaylist">
+    <Position X="14.5" Y="5" Width="5.75" />
+    <TypeIdentifier>
+      <HashCode>AgAAAAAAAAgAQGAAwLQAAAACAgBFAABAACDkCAACAgA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="FilesManager">
+    <Position X="14.75" Y="0.75" Width="5" />
+    <TypeIdentifier>
+      <HashCode>AIAAIAAAAAAAAgAAAAAAAAAEAABSAEAAAEAEAAAACQA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="ThirdPartyYouTubeLib">
+    <Position X="1.5" Y="0.5" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAAACAAAAAACAgAEAAAAAAAGEAAAAAACAAAAAAAAAAA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="ThirdPartyYouTubeClass">
+    <Position X="4.5" Y="4.25" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAACCBAAAAACAgAEAAAICAAGEAAAAAACAAAAAAAAEAA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="CachedYouTubeClass">
+    <Position X="0.5" Y="4.25" Width="3.75" />
+    <TypeIdentifier>
+      <HashCode>AAAACAAAACACAoAEBQAAAACGEAAAAAACAEAAAAACgAA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="YoutubeManager">
+    <Position X="7.5" Y="8.5" Width="6.5" />
+    <TypeIdentifier>
+      <HashCode>hAAAEACAAAQYBiAEiBABAAAEIgQAAAAAAEEIIAAAgAA=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Class Name="Application">
+    <Position X="9" Y="0.75" Width="5.25" />
+    <TypeIdentifier>
+      <HashCode>gEAAgAABgBUAAAAEAAABAACEBgACAAAAmBABAgQQIAQ=</HashCode>
+      <FileName>CourseWork.cpp</FileName>
+    </TypeIdentifier>
+  </Class>
+  <Font Name="Segoe UI" Size="9" />
+</ClassDiagram>
