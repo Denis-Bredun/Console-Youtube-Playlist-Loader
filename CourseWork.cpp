@@ -1,6 +1,7 @@
 #include <iostream>
 #include <fstream>
 #include <filesystem>
+#include <functional>
 #include <time.h>
 #include <algorithm>
 #include <vector>
@@ -68,13 +69,11 @@ private:
         ++countOfVideos;
         id = countOfVideos;
     }
-    void decrementId() {
-        --id;
-    }
 
 public:
     ~YoutubeVideo() {
-        --countOfVideos;
+        if (id == countOfVideos)
+            --countOfVideos;
         if (!publicationDate)
             delete publicationDate;
     }
@@ -95,6 +94,9 @@ public:
     }
     struct tm* getPublicationDate() {
         return publicationDate;
+    }
+    static int getCountOfVideos() {
+        return countOfVideos;
     }
 
     bool setName(string name) {
@@ -156,6 +158,7 @@ int YoutubeVideo::countOfVideos = 0;
 class YoutubePlaylist {
 private:
     friend class FilesManager;
+    friend class ThirdPartyYouTubeClass;
 
     vector<YoutubeVideo*> videos;
     string name;
@@ -173,7 +176,8 @@ private:
 
 public:
     ~YoutubePlaylist() {
-        --countOfPlaylists;
+        if(id > 0)
+            --countOfPlaylists;
         while (!videos.empty()) {
             delete videos.back();
             videos.pop_back();
@@ -183,8 +187,22 @@ public:
     string getName() {
         return name;
     }
+    int getId() {
+        return id;
+    }
     YoutubeVideo* getVideoById(int id) {
-        return *find_if(videos.begin(), videos.end(), [id](YoutubeVideo* video) {return video->getId() == id; });
+        for (auto video : videos)
+            if (video->getId() == id)
+                return video;
+        return nullptr;
+    }
+
+    bool empty() {
+        return videos.empty();
+    }
+
+    int size() {
+        return videos.size();
     }
 
     bool setName(string name) {
@@ -199,63 +217,36 @@ public:
         videos.push_back(video);
     }
     bool deleteVideoById(int id) {
-        if (videos.empty())
-            return false;
-
-        bool isIdOfLastElement = id == videos.size();
-
+        bool wasDeleted = false;
         YoutubeVideo* videoForDeleting;
         for (auto it = videos.begin(); it != videos.end(); ++it) {
             if ((*it)->id == id) {
                 videoForDeleting = *it;
                 videos.erase(it);
                 delete videoForDeleting;
+                wasDeleted = true;
                 break;
             }
         }
-        
-        if(!isIdOfLastElement) 
-            for (int i = 0; i < videos.size(); ++i)
-                if(videos[i]->getId() > id)
-                    videos[i]->decrementId();
-
-        return true;
+        return wasDeleted;
     }
 
-    bool sortVideosById() {
-        if (videos.empty())
-            return false;
-
+    void sortVideosById() {
         sort(videos.begin(), videos.end(), [](YoutubeVideo* a, YoutubeVideo* b) {
             return a->getId() < b->getId();
         });
-
-        return true;
     }
-    bool sortVideosByName() {
-        if (videos.empty())
-            return false;
-
+    void sortVideosByName() {
         sort(videos.begin(), videos.end(), [](YoutubeVideo* a, YoutubeVideo* b) {
             return a->getName() < b->getName();
         });
-
-        return true;
     }
-    bool sortVideosByCreator() {
-        if (videos.empty())
-            return false;
-
+    void sortVideosByCreator() {
         sort(videos.begin(), videos.end(), [](YoutubeVideo* a, YoutubeVideo* b) {
             return a->getCreator() < b->getCreator();
         });
-
-        return true;
     }
-    bool sortByDate() {
-        if (videos.empty())
-            return false;
-
+    void sortVideosByDate() {
         sort(videos.begin(), videos.end(), [](YoutubeVideo* a, YoutubeVideo* b) {
             return (a->getPublicationDate()->tm_year == b->getPublicationDate()->tm_year ? 
                 (a->getPublicationDate()->tm_mon == b->getPublicationDate()->tm_mon ? 
@@ -263,8 +254,6 @@ public:
                     a->getPublicationDate()->tm_mon < b->getPublicationDate()->tm_mon) : 
                 a->getPublicationDate()->tm_year < b->getPublicationDate()->tm_year);
         });
-
-        return true;
     }
 
     vector<YoutubeVideo*> findVideosByWordInNames(string word) {
@@ -310,7 +299,7 @@ public:
         return videosByDateRange;
     }
 
-    bool printInfo() {
+    void printInfo() {
         cout << "Плейлист #" << id << ":\n";
         cout << "Назва плейлисту: " << name << endl;
         if (!videos.empty()) {
@@ -320,11 +309,17 @@ public:
                 cout << "Відео #" << video->getId() << ": \"" << video->getName() << "\" - " 
                 << video->getCreator() << " - " << video->getStrPublicationDate() << endl;
             cout << endl;
-
-            return true;
         }
-        else
-            return false;
+    }
+    void printInfoAboutVideos() {
+        for (auto video : videos)
+        {
+            cout << "Відео #" << video->getId() << ":\n";
+            cout << "Назва: " << video->getName() << endl;
+            cout << "Хто створив: " << video->getCreator() << endl;
+            cout << "Дата публікації (день-місяць-рік): " << video->getStrPublicationDate() << "\n";
+        }
+        cout << endl;
     }
     bool enterInfo() {
         string data;
@@ -343,7 +338,8 @@ int YoutubePlaylist::countOfPlaylists = 0;
 class FilesManager {
 private:
     static const string AVAILABLE_PLAYLISTS_FILEPATH,
-        PLAYLISTS_DIRECTORY;
+        PLAYLISTS_DIRECTORY,
+        VIDEOS_DIRECTORY;
 
     static vector<string> getFilepathesForPlaylists() {
         vector<string> filepathesForPlaylists;
@@ -377,6 +373,31 @@ private:
                 remove(filepathesForPlaylists[i].c_str());
         }
     }
+    static vector<string> readNamesOfAvailablePlaylists() {
+        vector<string> aval_playlists;
+
+        ifstream ifs_aval_playlists(AVAILABLE_PLAYLISTS_FILEPATH);
+
+        if (!ifs_aval_playlists.is_open())
+            return aval_playlists;
+
+        string line;
+
+        while (getline(ifs_aval_playlists, line))
+            aval_playlists.push_back(line);
+
+        return aval_playlists;
+    }
+    static string removeSpecialCharacters(string str) {
+        string specialChars = "/\\\":?*|<>";
+        size_t pos;
+        for (char c : specialChars) {
+            while ((pos = str.find(c)) != string::npos) {
+                str.erase(pos, 1);
+            }
+        }
+        return str;
+    }
 
 public:
     static void writePlaylistsData(vector<YoutubePlaylist*>* playlists) {
@@ -387,13 +408,12 @@ public:
             ofs_aval_playlists << it->getName() << endl;
         ofs_aval_playlists.close();
 
-        if (!std::filesystem::exists(PLAYLISTS_DIRECTORY))
-            std::filesystem::create_directories(PLAYLISTS_DIRECTORY);
+        if (!filesystem::exists(PLAYLISTS_DIRECTORY))
+            filesystem::create_directories(PLAYLISTS_DIRECTORY);
 
         for (auto playlist : *playlists)
             writePlaylistData(playlist);
     }
-
     static void writePlaylistData(YoutubePlaylist* playlist) {
         ofstream ofs_playlist(PLAYLISTS_DIRECTORY + playlist->name + ".txt");
 
@@ -410,28 +430,24 @@ public:
 
         ofs_playlist.close();
     }
+    static void writeVideo(YoutubeVideo* video, ofstream* ofs_playlist = nullptr) {
+        if(ofs_playlist)
+        {
+            *ofs_playlist << video->id << endl;
+            *ofs_playlist << video->name << endl;
+            *ofs_playlist << video->creator << endl;
+            *ofs_playlist << video->getStrPublicationDate() << endl;
+        }
+        else {
+            if (!filesystem::exists(VIDEOS_DIRECTORY))
+                filesystem::create_directories(VIDEOS_DIRECTORY);
 
-    static void writeVideo(YoutubeVideo* video, ofstream* playlist) {
-        *playlist << video->id << endl;
-        *playlist << video->name << endl;
-        *playlist << video->creator << endl;
-        *playlist << video->getStrPublicationDate() << endl;
-    }
-
-    static vector<string> readNamesOfAvailablePlaylists() {
-        vector<string> aval_playlists;
-
-        ifstream ifs_aval_playlists(AVAILABLE_PLAYLISTS_FILEPATH);
-
-        if (!ifs_aval_playlists.is_open())
-            return aval_playlists;
-
-        string line;
-
-        while (getline(ifs_aval_playlists, line))
-            aval_playlists.push_back(line);
-
-        return aval_playlists;
+            string filename = removeSpecialCharacters(video->name);
+            ofstream ofs_video(VIDEOS_DIRECTORY + filename + ".txt");
+            ofs_video << "Хто створив: " << video->creator << endl;
+            ofs_video << "Дата публікації: " << video->getStrPublicationDate() << endl;
+            ofs_video.close();
+        }
     }
 
     static void readPlaylists(vector<YoutubePlaylist*>* playlists) {
@@ -446,7 +462,6 @@ public:
             ifs_playlist.close();
         }
     }
-
     static void readPlaylist(vector<YoutubePlaylist*>* playlists, ifstream* ifs_playlist) {
         string line;
         YoutubePlaylist* playlist = new YoutubePlaylist();
@@ -477,7 +492,6 @@ public:
             playlists->push_back(playlist);
         }
     }
-
     static void readVideo(YoutubePlaylist* playlist, ifstream* ifs_playlist) {
         YoutubeVideo* video = new YoutubeVideo();
         string line;
@@ -499,202 +513,642 @@ public:
 };
 
 const string FilesManager::AVAILABLE_PLAYLISTS_FILEPATH = "Available playlists.txt",
-FilesManager::PLAYLISTS_DIRECTORY = "Playlists\\";
+FilesManager::PLAYLISTS_DIRECTORY = "Playlists\\",
+FilesManager::VIDEOS_DIRECTORY = "Videos\\";
 
+class ThirdPartyYouTubeLib {
+public:
+    virtual YoutubePlaylist* listVideos(int id) = 0;
+    virtual YoutubeVideo* getVideoInfo(int playlistId, int videoId) = 0;
+    virtual bool downloadVideo(int playlistId, int videoId) = 0;
 
+    virtual void addPlaylist(YoutubePlaylist* playlist) = 0;
+    virtual void deletePlaylistById(int id) = 0;
+    virtual int getCountOfPlaylists() = 0;
+    virtual bool empty() = 0;
+    virtual bool printListOfPlaylists() = 0;
+};
 
+class ThirdPartyYouTubeClass : public ThirdPartyYouTubeLib {
+private:
+    friend class Application;
 
+    vector<YoutubePlaylist*> playlists;
 
+    void loadData() {
+        FilesManager::readPlaylists(&playlists);
+    }
 
+public:
+    ThirdPartyYouTubeClass() {
+        loadData();
+    }
+    ~ThirdPartyYouTubeClass() {
+        while (!playlists.empty()) {
+            delete playlists.back();
+            playlists.pop_back();
+        }
+    }
 
+    YoutubePlaylist* listVideos(int id) override {
+        return *find_if(playlists.begin(), playlists.end(), [id](YoutubePlaylist* playlist) { return playlist->getId() == id; });
+    }
+    YoutubeVideo* getVideoInfo(int playlistId, int videoId) override {
+        return listVideos(playlistId)->getVideoById(videoId);
+    }
+    bool downloadVideo(int playlistId, int videoId) override {
+        auto videoToDownload = getVideoInfo(playlistId, videoId);
+        if(videoToDownload)
+        {
+            FilesManager::writeVideo(videoToDownload);
+            return true;
+        }
+        return false;
+    }
 
+    void addPlaylist(YoutubePlaylist* playlist) override {
+        playlists.push_back(playlist);
+    }
+    void deletePlaylistById(int id) override {
+        bool isIdOfLastElement = id == playlists.size();
 
+        YoutubePlaylist* playlistForDeleting;
+        for (auto it = playlists.begin(); it != playlists.end(); ++it) {
+            if ((*it)->getId() == id) {
+                playlistForDeleting = *it;
+                playlists.erase(it);
+                delete playlistForDeleting;
+                break;
+            }
+        }
 
+        if (!isIdOfLastElement)
+            for (int i = 0; i < playlists.size(); ++i)
+                if (playlists[i]->getId() > id)
+                    playlists[i]->decrementId();
+    }
+    int getCountOfPlaylists() override {
+        return playlists.size();
+    }
+    bool empty() override {
+        return playlists.empty();
+    }
+    bool printListOfPlaylists() override {
+        if (empty())
+            return false;
 
+        for (auto it : playlists)
+            cout << "Плейлист #" << it->getId() << ": \"" << it->getName() << "\"\n";
 
+        return true;
+    }
 
+    void unloadData() {
+        FilesManager::writePlaylistsData(&playlists);
+    }
+};
 
+class CachedYouTubeClass : public ThirdPartyYouTubeLib {
+private:
+    ThirdPartyYouTubeLib* service;
+    YoutubePlaylist* cachedPlaylist;
+    YoutubeVideo* cachedVideo;
+    bool needReset;
+
+    void resetCache() {
+        cachedPlaylist = nullptr;
+        cachedVideo = nullptr;
+        needReset = false;
+    }
+
+public:
+    CachedYouTubeClass(ThirdPartyYouTubeLib* service) {
+        this->service = service;
+        needReset = false;
+    }
+    ~CachedYouTubeClass() {
+        delete service;
+    }
+
+    YoutubePlaylist* listVideos(int id) override {
+        if (needReset)
+            resetCache();
+
+        if (!cachedPlaylist || cachedPlaylist->getId() != id)
+            cachedPlaylist = service->listVideos(id);
+        return cachedPlaylist;
+    }
+    YoutubeVideo* getVideoInfo(int playlistId, int videoId) override {
+        if (needReset)
+            resetCache();
+
+        if (!cachedVideo || cachedVideo->getId() != videoId)
+            if (!cachedPlaylist || cachedPlaylist->getId() != playlistId) {
+                cachedPlaylist = service->listVideos(playlistId);
+                cachedVideo = cachedPlaylist->getVideoById(videoId);
+            }
+            else 
+                cachedVideo = cachedPlaylist->getVideoById(videoId);
+        return cachedVideo;
+    }
+    bool downloadVideo(int playlistId, int videoId) override {
+        if (needReset)
+            resetCache();
+
+        if (!cachedVideo || cachedVideo->getId() != videoId)
+            if (!cachedPlaylist || cachedPlaylist->getId() != playlistId) {
+                cachedPlaylist = service->listVideos(playlistId);
+                cachedVideo = cachedPlaylist->getVideoById(videoId);
+            }
+            else 
+                cachedVideo = cachedPlaylist->getVideoById(videoId);
+
+        if(cachedVideo)
+        {
+            FilesManager::writeVideo(cachedVideo);
+            return true;
+        }
+        return false;
+    }
+    void setNeedReset() {
+        needReset = true;
+    }
+
+    void addPlaylist(YoutubePlaylist* playlist) override {
+        service->addPlaylist(playlist);
+    }
+    void deletePlaylistById(int id) override {
+        return service->deletePlaylistById(id);
+    }
+    int getCountOfPlaylists() override {
+        return service->getCountOfPlaylists();
+    }
+    bool empty() override {
+        return service->empty();
+    }
+    bool printListOfPlaylists() override {
+        return service->printListOfPlaylists();
+    }
+};
+
+class YoutubeManager {
+private:
+    ThirdPartyYouTubeLib* service;
+
+    void printSetOfVideos(string msg, vector<YoutubeVideo*>* videos) {
+        cout << msg;
+
+        for (auto video : *videos)
+            cout << "Відео #" << video->getId() << ": \"" << video->getName() << "\" - "
+            << video->getCreator() << " - " << video->getStrPublicationDate() << endl;
+        cout << endl;
+    }
+
+public:
+    YoutubeManager(ThirdPartyYouTubeLib* service) {
+        this->service = service;        
+    }
+    ~YoutubeManager() {
+        delete service;
+    }
+
+    bool createVideo(int playlistId) {
+        YoutubeVideo* video = new YoutubeVideo();
+        if (!video->enterInfo()) {
+            delete video;
+            return false;
+        }
+        service->listVideos(playlistId)->addVideo(video);
+
+        return true;
+    }
+    bool createPlaylist() {
+        YoutubePlaylist* playlist = new YoutubePlaylist();
+        if (!playlist->enterInfo()) {
+            delete playlist;
+            return false;
+        }
+        service->addPlaylist(playlist);
+
+        return true;
+    }
+
+    bool deleteVideo(int playlistId, int videoId) {
+        return service->listVideos(playlistId)->deleteVideoById(videoId);
+    }
+    void deletePlaylist(int id) {
+        service->deletePlaylistById(id);
+    }
+
+    bool downloadVideo(int playlistId, int videoId) {
+        return service->downloadVideo(playlistId, videoId);
+    }
+
+    void resetCache() {
+        dynamic_cast<CachedYouTubeClass*>(service)->setNeedReset();
+    }
+
+    void printInfoAboutPlaylist(int id) {
+        service->listVideos(id)->printInfo();
+    }
+    void printInfoAboutVideosFromPlaylist(int id) {
+        service->listVideos(id)->printInfoAboutVideos();
+    }
+    bool printListOfPlaylists() {
+        return service->printListOfPlaylists();
+    }
+
+    int getCountOfPlaylists() {
+        return service->getCountOfPlaylists();
+    }
+    YoutubePlaylist* getPlaylist(int id) {
+        return service->listVideos(id);
+    }
+    YoutubeVideo* getVideo(int playlistId, int videoId) {
+        return service->getVideoInfo(playlistId, videoId);
+    }
+
+    bool doesAnyPlaylistExist() {
+        return !service->empty();
+    }    
+
+    void sortPlaylistById(int id) {
+        service->listVideos(id)->sortVideosById();
+    }
+    void sortPlaylistByName(int id) {
+        service->listVideos(id)->sortVideosByName();
+    }
+    void sortPlaylistByCreator(int id) {
+        service->listVideos(id)->sortVideosByCreator();
+    }
+    void sortPlaylistByDate(int id) {
+        service->listVideos(id)->sortVideosByDate();
+    }
+
+    vector<YoutubeVideo*> findVideosByWordInNames(int playlistId, string word) {
+        auto videosByName = service->listVideos(playlistId)->findVideosByWordInNames(word);
+        if (videosByName.empty())
+            return videosByName;
+        printSetOfVideos("Відео, які в назві містять слово \"" + word + "\":\n", &videosByName);
+        return videosByName;
+    }
+    vector<YoutubeVideo*> findVideosByWordInCreators(int playlistId, string word) {
+        auto videosByCreator = service->listVideos(playlistId)->findVideosByWordInCreators(word);
+        if (videosByCreator.empty())
+            return videosByCreator;
+        printSetOfVideos("Відео, канали яких в назві містять слово \"" + word + "\":\n", &videosByCreator);
+        return videosByCreator;
+    }
+    vector<YoutubeVideo*> findVideosByDateRange(int playlistId, string startDateStr, string endDateStr) {
+        auto videosByDateRange = service->listVideos(playlistId)->findVideosByDateRange(startDateStr, endDateStr);
+        if (videosByDateRange.empty())
+            return videosByDateRange;
+        printSetOfVideos("Відео, дата публікації яких входить до діапазону " + startDateStr + "-" + endDateStr + ":\n", &videosByDateRange);
+        return videosByDateRange;
+    }
+};
+
+class Application {
+private:
+    int currentPlaylistId;
+    YoutubeManager* manager;
+    function<void()> unloadDataFunction;
+
+    void setConsoleColor(int colorCode) {
+        HANDLE hConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+        SetConsoleTextAttribute(hConsole, colorCode);
+    }
+
+    void pauseAndCleanConsole() {
+        system("pause");
+        system("cls");
+    }
+
+    void successNotification(const char* msg) {
+        cout << "\nУспіх: " << msg << "\n\n";
+    }
+
+    void errorNotification(const char* msg) {
+        cout << "\nПомилка: " << msg << "\n\n";
+    }
+
+    void printNotification(const char* type, const char* msg) {
+        if (strcmp(type, "success") == 0) {
+            setConsoleColor(10); // Green color
+            successNotification(msg);
+        }
+        else {
+            setConsoleColor(12); // Red color
+            errorNotification(msg);
+        }
+        setConsoleColor(15); // White color
+        pauseAndCleanConsole();
+    }
+    bool validateEnteredNumber(string option, short firstOption, short lastOption) {
+        if (option.empty())
+            return false;
+
+        for (char num : option)
+            if (num < '0' || num > '9')
+                return false;
+
+        auto convertedValue = stoull(option);
+
+        return firstOption <= convertedValue && convertedValue <= lastOption;
+    }
+    int enterNumberInRange(string message, int firstOption, int lastOption) {
+        bool isOptionVerified = false;
+        string option;
+
+        cout << "\n" << message;
+        getline(cin, option);
+
+        isOptionVerified = validateEnteredNumber(option, firstOption, lastOption);
+
+        if (!isOptionVerified)
+            printNotification("error", "неправильній вибір! Спробуйте знов!");
+
+        return isOptionVerified ? stoi(option) : -1;
+    }
+
+    void printManagingSessionsMenu(int& choice) {
+        cout << "Головне меню:\n";
+        cout << "0. Закрити програму\n";
+        cout << "1. Створити плейлист\n";
+        cout << "2. Відкрити плейлист\n";
+        cout << "3. Видалити плейлист\n";
+        choice = enterNumberInRange("Ваш вибір: ", 0, 3);
+    }
+
+    void createPlaylist() {
+        if (manager->createPlaylist())
+            printNotification("success", "плейлист був успішно створений!");
+        else
+            printNotification("error", "назва може складатись тільки з літер, цифр та пробілів!");
+    }
+
+    bool doesAnyPlaylistExist() {
+        if(!manager->doesAnyPlaylistExist())
+            printNotification("error", "в даний момент жодного плейлиста немає!");
+        return manager->doesAnyPlaylistExist();
+    }
+
+    void printListOfAvailablePlaylists() {
+        if(!manager->printListOfPlaylists())
+            printNotification("error", "в даний момент жодного плейлиста немає!");
+    }
+
+    void addVideoToPlaylist() {
+        if (manager->createVideo(currentPlaylistId))
+            printNotification("success", "відео було успішно додано до плейлиста!");
+        else
+            printNotification("error", "неправильно введені дані!\nНазва відео повинна містити хоча б один символ,\n назва каналу може складатись тільки з літер, цифр та пробілів,\nа дата повинна бути введена у форматі!");
+    }
+
+    bool doesPlaylistHaveAnyVideo() {
+        if (manager->getPlaylist(currentPlaylistId)->empty())
+            printNotification("error", "в даному плейлисті немає жодного відео!");
+        return !manager->getPlaylist(currentPlaylistId)->empty();
+    }
+
+    void findVideosByNames() {
+        string word;
+        cout << "\nВведіть підрядок, за яким буде відбуватись пошук: ";
+        getline(cin, word);
+        if(word.empty())
+        {
+            printNotification("error", "потрібно ввести підрядок!");
+            return;
+        }
+        cout << endl;
+        auto foundVideos = manager->findVideosByWordInNames(currentPlaylistId, word);
+        if (foundVideos.empty())
+            printNotification("error", "жодне відео цього плейлиста в назві не містить уведене слово!");
+        else
+            system("pause");
+    }
+
+    void findVideosByCreators() {
+        string word;
+        cout << "\nВведіть підрядок, за яким буде відбуватись пошук: ";
+        getline(cin, word);
+        if (word.empty())
+        {
+            printNotification("error", "потрібно ввести підрядок!");
+            return;
+        }
+        cout << endl;
+        auto foundVideos = manager->findVideosByWordInCreators(currentPlaylistId, word);
+        if (foundVideos.empty())
+            printNotification("error", "жодне відео цього плейлиста в назві каналу не містить уведене слово!");
+        else
+            system("pause");
+    }
+
+    void findVideosByDates() {
+        string startDate, endDate;
+        cout << "\nВведіть початкову дату (день-місяць-рік): ";
+        getline(cin, startDate);
+        cout << "Введіть кінцеву дату (день-місяць-рік): ";
+        getline(cin, endDate);
+        cout << endl;
+        auto foundVideos = manager->findVideosByDateRange(currentPlaylistId, startDate, endDate);
+        if (foundVideos.empty())
+            printNotification("error", "або дати введені не в правильному форматі, або відсутні відео, опубліковані в цьому проміжку дат!");
+        else
+            system("pause");
+    }
+
+    void workWithPlaylistMenu(int& choice) {
+        cout << "Меню дій над плейлистом " << manager->getPlaylist(currentPlaylistId)->getName() << ":\n";
+        cout << "0. Назад\n";
+        cout << "1. Додати відео\n";
+        cout << "2. Завантажити на ПК відео\n";
+        cout << "3. Видалити відео\n\n";
+        cout << "4. Вивести інформацію про усі відео\n";
+        cout << "5. Вивести інформацію про певне відео\n\n";
+        cout << "6. Відсортувати відео за ID\n";
+        cout << "7. Відсортувати відео за назвою\n";
+        cout << "8. Відсортувати відео за назвою каналу\n";
+        cout << "9. Відсортувати відео за датою\n\n";
+        cout << "10. Пошук відео за словом в назві\n";
+        cout << "11. Пошук відео за словом в назві каналу\n";
+        cout << "12. Пошук відео з певної по певну дату\n\n";
+        cout << "13. Очистити кеш програми\n";
+        choice = enterNumberInRange("Ваш вибір: ", 0, 13);
+    }
+
+    void printInfoAboutVideo() {
+        int id = enterNumberInRange("Введіть ID відео: ", 1, YoutubeVideo::getCountOfVideos());
+        if (id == -1)
+            return;
+        auto videoToPrint = manager->getVideo(currentPlaylistId, id);
+        if (videoToPrint)
+        {
+            videoToPrint->printInfo();
+            system("pause");
+        }
+        else
+            printNotification("error", "в даному плейлисті немає відео з таким ID!");
+    }
+
+    void downloadVideo() {
+        int id = enterNumberInRange("Введіть ID відео: ", 1, YoutubeVideo::getCountOfVideos());
+        if (id == -1)
+            return;
+        if(manager->downloadVideo(currentPlaylistId, id))
+            printNotification("success", "відео було успішно завантажене!");
+        else
+            printNotification("error", "в даному плейлисті немає відео з таким ID!");
+    }
+
+    void deleteVideo() {
+        int id = enterNumberInRange("Введіть ID відео: ", 1, YoutubeVideo::getCountOfVideos());
+        if (id == -1)
+            return;
+        if(manager->deleteVideo(currentPlaylistId, id))
+            printNotification("success", "відео було успішно видалено!");
+        else
+            printNotification("error", "в даному плейлисті немає відео з таким ID!");
+    }
+
+    void executeWorkWithPlaylistMenu() {
+        int choice;
+
+        do
+        {
+            system("cls");
+            manager->printInfoAboutPlaylist(currentPlaylistId);
+            workWithPlaylistMenu(choice);
+            switch (choice)
+            {
+            case 0:
+                cout << "\nПовернення до головного меню.\n";
+                return;
+            case 1:
+                addVideoToPlaylist();
+                continue;
+            case 2:
+            case 3:
+            case 4:
+            case 5:
+            case 6:
+            case 7:
+            case 8:
+            case 9:
+            case 10:
+            case 11:
+            case 12:
+                if(doesPlaylistHaveAnyVideo())
+                    switch (choice)
+                    {
+                    case 2:
+                        downloadVideo();
+                        continue;
+                    case 3:
+                        deleteVideo();
+                        continue;
+                    case 4:
+                        manager->printInfoAboutVideosFromPlaylist(currentPlaylistId);
+                        system("pause");
+                        continue;
+                    case 5:
+                        printInfoAboutVideo();
+                        continue;
+                    case 6:
+                        manager->sortPlaylistById(currentPlaylistId);
+                        printNotification("success", "дані були успішно відсортовані за ID!");
+                        continue;
+                    case 7:
+                        manager->sortPlaylistByName(currentPlaylistId);
+                        printNotification("success", "дані були успішно відсортовані за назвою!");
+                        continue;
+                    case 8:
+                        manager->sortPlaylistByCreator(currentPlaylistId);
+                        printNotification("success", "дані були успішно відсортовані за назвою канала!");
+                        continue;
+                    case 9:
+                        manager->sortPlaylistByDate(currentPlaylistId);
+                        printNotification("success", "дані були успішно відсортовані за датою!");
+                        continue;
+                    case 10:
+                        findVideosByNames();
+                        continue;
+                    case 11:
+                        findVideosByCreators();
+                        continue;
+                    case 12:
+                        findVideosByDates();
+                        continue;
+                    }
+                continue;
+            case 13:
+                manager->resetCache();
+                printNotification("success", "кеш програми був успішно очищений!");
+            }
+        } while (true);
+    }
+
+    void deleteOrOpenPlaylist(string action) {
+        int id = enterNumberInRange("Введіть номер плейлиста: ", 1, manager->getCountOfPlaylists());
+        if (id == -1)
+            return;
+        if (action == "видалити")
+        {
+            manager->deletePlaylist(id);
+            printNotification("success", "плейлист був успішно видалений!");
+        }
+        else {
+            currentPlaylistId = id;
+            executeWorkWithPlaylistMenu();
+        }
+    }
+public:
+    Application() {
+        auto youTubeService = new ThirdPartyYouTubeClass();
+        unloadDataFunction = [=]() {
+            youTubeService->unloadData();
+            };
+        auto youTubeProxy = new CachedYouTubeClass(youTubeService);
+        manager = new YoutubeManager(youTubeProxy);
+    }
+    ~Application() {
+        delete manager;
+    }
+    
+    void executeMainMenu() {
+        int choice;
+        
+        do
+        {
+            system("cls");
+            printListOfAvailablePlaylists();
+            printManagingSessionsMenu(choice); 
+            switch (choice)
+            {
+            case 0:
+                cout << "\nДо побачення!\n";
+                unloadDataFunction();
+                return;
+            case 1:
+                createPlaylist();
+                continue;
+            case 2:
+            case 3:
+                if (doesAnyPlaylistExist())
+                    choice == 2 ? deleteOrOpenPlaylist("відкрити") :
+                    deleteOrOpenPlaylist("видалити");
+            }
+        } while (true);
+    }
+};
 
 int main()
 {
     SetConsoleCP(1251);
     SetConsoleOutputCP(1251);
 
-    vector<YoutubePlaylist*> playlists;
-    FilesManager::readPlaylists(&playlists);
-
-    YoutubePlaylist* pl = new YoutubePlaylist();
-    pl->enterInfo();
-    YoutubePlaylist* pl2 = new YoutubePlaylist();
-    pl2->enterInfo();
-    YoutubePlaylist* pl3 = new YoutubePlaylist();
-    pl3->enterInfo();
-    playlists.push_back(pl);
-    playlists.push_back(pl2);
-    playlists.push_back(pl3);
-    FilesManager::writePlaylistsData(&playlists);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    //vector<YoutubeVideo*> videos(10);
-    //
-    //cout << "Введення даних:\n";
-    //for (int i = 0; i < videos.size(); ++i)
-    //{
-    //    videos[i] = new YoutubeVideo();
-    //    videos[i]->enterInfo();
-    //    cout << "\n";
-    //}
-    
-    //cout << "\nВивід інформації:\n";
-    //for (int i = 0; i < videos.size(); ++i)
-    //    videos[i]->printInfo();
-    
-   //cout << "\nСтворення плейлиста, ввід-вивід даних:\n";
-   //YoutubePlaylist* playlist1 = new YoutubePlaylist();
-   //YoutubePlaylist* playlist2 = new YoutubePlaylist();
-   //playlist1->enterInfo();
-   //playlist2->enterInfo();
-   //
-   //for (int i = 0; i < 5; ++i)
-   //    playlist1->addVideo(videos[i]);
-   //
-   //for (int i = 5; i < 10; ++i)
-   //    playlist2->addVideo(videos[i]);
-
-    //vector<YoutubePlaylist*> playlistsToRead, playlistsToRead2;
-    //playlists.push_back(playlist1);
-    //playlists.push_back(playlist2);
-    //
-    //FilesManager::writePlaylistsData(&playlists);
-    //
-    //playlist2->deleteVideoById(8);
-    //playlist2->deleteVideoById(9);
-    //
-    //FilesManager::writePlaylistsData(&playlists);
-
-    //FilesManager::readPlaylists(&playlistsToRead);
-    //FilesManager::writePlaylistsData(&playlistsToRead);
-    //playlistsToRead.pop_back();
-
-    //cout << "\nДодавання відео в плейлист...\n";
-    //for (auto video : videos)
-    //    playlist->addVideo(video);
-    
-    //cout << "\nВивід даних плейлиста:\n";
-    //playlist->printInfo();
-    //
-    //cout << "\nСортування за іменем:\n";
-    //playlist->sortVideosByName();
-    //playlist->printInfo();
-    //
-    //cout << "\nСортування за датою:\n";
-    //playlist->sortByDate();
-    //playlist->printInfo();
-    //
-    //cout << "\nСортування за creator:\n";
-    //playlist->sortVideosByCreator();
-    //playlist->printInfo();
-    //
-    
-    //
-    //cout << "\nПошук за іменем:\n";
-    //string word;
-    //cin >> word;
-    //auto videosByName = playlist->findVideosByWordInNames(word);
-    //for (auto video:videosByName)
-    //    video->printInfo();
-    //
-    //cout << "\nПошук за creator:\n";
-    //cin >> word;
-    //auto videosByCreator = playlist->findVideosByWordInCreators(word);
-    //for (auto video : videosByCreator)
-    //    video->printInfo();
-    
-    //cout << "\nПошук за датами:\n";
-    //string startDate, endDate;
-    //cin >> startDate;
-    //cin >> endDate;
-    //auto videosByDate = playlist->findVideosByDateRange(startDate, endDate);
-    //for (auto video : videosByDate)
-    //    video->printInfo();
-    //
-    //cout << "\nСортування за id:\n";
-    //playlist->sortVideosById();
-    //playlist->printInfo();
-
-
-
-
-
-    //cout << "\nВидалення елементів:\n";
-    //cout << "\n6-ого:\n";
-    //playlist->deleteVideoById(6);
-    //playlist->printInfo();
-    //cout << "\n1-ого:\n";
-    //playlist->deleteVideoById(1);
-    //playlist->printInfo();
-    //cout << "\n3-ого:\n";
-    //playlist->deleteVideoById(3);
-    //playlist->printInfo();
-    
-    //cout << "\nСортування за іменем:\n";
-    //playlist->sortVideosByName();
-    //playlist->printInfo();
-    //
-    //cout << "\nВидалення елементів:\n";
-    //cout << "\n6-ого:\n";
-    //playlist->deleteVideoById(6);
-    //playlist->printInfo();
-    //cout << "\n3-ого:\n";
-    //playlist->deleteVideoById(3);
-    //playlist->printInfo();
-    //cout << "\n1-ого:\n";
-    //playlist->deleteVideoById(1);
-    //playlist->printInfo();
+    Application* app = new Application();
+    app->executeMainMenu();
+    delete app;
 }
